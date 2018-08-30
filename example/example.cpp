@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include "../include/flexInvokable.hpp"
+#include <csari/flexInvokable.hpp>
 
 // void()
 auto voidReturn() {
@@ -61,12 +61,12 @@ int main() {
   }
   auto contentCheckers = contentIsEqualReturn();
   auto it = contentCheckers.begin();
-  if (!std::move(*it)(5)) {
+  if (!std::move (*it)(5)) {
     // Fail the example
     return 1;
   }
   ++it;
-  if (!std::move(*it)(6)) {
+  if (!std::move (*it)(6)) {
     // Fail the example
     return 1;
   }
