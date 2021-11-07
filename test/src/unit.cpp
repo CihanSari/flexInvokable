@@ -1,27 +1,17 @@
-#include "gtest/gtest.h"
-
-#include <vector>
+#define CATCH_CONFIG_MAIN
+#include <catch.hpp>
 #include <csari/flexInvokable.hpp>
 #include <stdexcept>
+#include <vector>
 
-TEST(UnitTests, EncapsulationTests) {
+TEST_CASE("EncapsulationTests") {
   // void()
   auto voidReturn = [] {
-    auto fiveUniqueContainer = std::make_unique<int>(5);
-    auto sixUniqueContainer = std::make_unique<int>(6);
-    auto showFive = [mu = std::move(fiveUniqueContainer)] {
-      if (*mu.get() != 5) {
-        throw(std::runtime_error{"Unexpected test error!"});
-      }
-    };
-    auto showSix = [mu = std::move(sixUniqueContainer)] {
-      if (*mu.get() != 6) {
-        throw(std::runtime_error{"Unexpected test error!"});
-      }
-    };
+    auto check5 = [mu = std::make_unique<int>(5)] { REQUIRE(*mu == 5); };
+    auto check6 = [mu = std::make_unique<int>(6)] { REQUIRE(*mu == 6); };
     std::vector<csari::flexInvokable<void()>> res;
-    res.emplace_back(std::move(showFive));
-    res.emplace_back(std::move(showSix));
+    res.emplace_back(std::move(check5));
+    res.emplace_back(std::move(check6));
     return res;
   };
 
@@ -30,40 +20,30 @@ TEST(UnitTests, EncapsulationTests) {
   }
 }
 
-TEST(UnitTests, ReturnValueTests) {
+TEST_CASE("ReturnValueTests") {
   // int()
   auto returnValue = [] {
     std::vector<csari::flexInvokable<int()>> res;
-
-    auto uniqueContainer = std::make_unique<int>(5);
-    auto isFive = [mu = std::move(uniqueContainer)] { return *mu.get(); };
-    res.emplace_back(std::move(isFive));
-
-    uniqueContainer.reset();
-    uniqueContainer = std::make_unique<int>(6);
-    auto isSix = [mu = std::move(uniqueContainer)] { return *mu.get(); };
-    res.emplace_back(std::move(isSix));
-
+    res.emplace_back([mu = std::make_unique<int>(5)] { return *mu; });
+    res.emplace_back([mu = std::make_unique<int>(6)] { return *mu; });
     return res;
   };
 
   auto contentCheckers = returnValue();
   auto it = contentCheckers.begin();
-  EXPECT_EQ(std::move (*it)(), 5);
+  REQUIRE(std::move(*it)() == 5);
   ++it;
-  EXPECT_EQ(std::move (*it)(), 6);
+  REQUIRE(std::move(*it)() == 6);
 }
 
-TEST(UnitTests, ArgumentTests) {
+TEST_CASE("ArgumentTests") {
   // bool(int)
   auto contentIsEqualReturn = [] {
-    auto fiveUniqueContainer = std::make_unique<int>(5);
-    auto sixUniqueContainer = std::make_unique<int>(6);
-    auto isEqual1 = [mu = std::move(fiveUniqueContainer)](int in) {
-      return *mu.get() == in;
+    auto isEqual1 = [mu = std::make_unique<int>(5)](int in) {
+      return *mu == in;
     };
-    auto isEqual2 = [mu = std::move(sixUniqueContainer)](int in) {
-      return *mu.get() == in;
+    auto isEqual2 = [mu = std::make_unique<int>(6)](int in) {
+      return *mu == in;
     };
     std::vector<csari::flexInvokable<bool(int)>> res;
     res.emplace_back(std::move(isEqual1));
@@ -72,7 +52,10 @@ TEST(UnitTests, ArgumentTests) {
   };
   auto contentCheckers = contentIsEqualReturn();
   auto it = contentCheckers.begin();
-  EXPECT_TRUE(std::move (*it)(5));
+  REQUIRE(std::move(*it)(5));
   ++it;
-  EXPECT_TRUE(std::move (*it)(6));
+  REQUIRE(std::move(*it)(6));
 }
+
+int examples();
+TEST_CASE("Examples") { REQUIRE(examples() == 0); }
