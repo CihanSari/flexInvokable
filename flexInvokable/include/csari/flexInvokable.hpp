@@ -1,87 +1,63 @@
-#include <type_traits>
 #include <memory>
-namespace csari
-{
+#include <stdexcept>
+#include <type_traits>
+
+namespace csari {
 template <class Sig>
 struct flexInvokable;
-
-namespace flexInvokableInternal
-{
-template <class T>
-struct emplace_as
-{
-};
-} // namespace flexInvokableInternal
 template <class R, class... Args>
-struct flexInvokable<R(Args...)>
-{
+struct flexInvokable<R(Args...)> final {
+ private:
+  template <class F>
+  struct parser {
+    using D = F;
+    static auto const IsConvertible =
+        std::is_convertible<std::invoke_result_t<F, Args...>, R>::value;
+    static auto const IsVoid = std::is_same_v<R, void>;
+    static auto const IsSelf = std::is_same_v<D, flexInvokable>;
+    static auto const IsValidFunction = IsConvertible || IsVoid || !IsSelf;
+    using EnableIfValid = std::enable_if_t<IsValidFunction, bool>;
+  };
+
+ public:
   // can be default ctored and moved:
   flexInvokable() = default;
-  flexInvokable(flexInvokable &&) = default;
-  flexInvokable &operator=(flexInvokable &&) = default;
+  flexInvokable(flexInvokable &&) noexcept = default;
+  flexInvokable &operator=(flexInvokable &&) noexcept = default;
+  flexInvokable(flexInvokable const &) = delete;
+  flexInvokable &operator=(flexInvokable const &) = delete;
+  ~flexInvokable() = default;
 
-  // implicitly create from a type that can be compatibly invoked
-  // and isn't a fire_once itself
-  template <class F,
-            std::enable_if_t<!std::is_same<std::decay_t<F>, flexInvokable>{},
-                             int> = 0,
-            std::enable_if_t<std::is_convertible<
-#if _HAS_CXX17
-                                 std::invoke_result_t<F, Args...>
-#else
-                                 std::result_of_t<std::decay_t<F> &(Args...)>
-#endif
-                                 ,
-                                 R>{} ||
-                                 std::is_same<R, void>{},
-                             int> = 0>
+  // implicitly create from a type that can be invoked
+  template <class F, class P = parser<std::decay_t<F>>,
+            typename P::EnableIfValid = true>
+  flexInvokable(F &&f) : flexInvokable{P{}, std::forward<F>(f)} {}
 
-  flexInvokable(F &&f)
-      : flexInvokable(flexInvokableInternal::emplace_as<std::decay_t<F>>{},
-                      std::forward<F>(f))
-  {
-  }
-  // emplacement construct using the emplace_as tag type:
+  // Construct using the parser tag type:
   template <class F, class... FArgs>
-  flexInvokable(flexInvokableInternal::emplace_as<F>, FArgs &&... fargs)
-  {
-    rebind<F>(std::forward<FArgs>(fargs)...);
-  }
-  // invoke in the case where R is not void:
-  template <class R2 = R, std::enable_if_t<!std::is_same<R2, void>{}, int> = 0>
-  R2 operator()(Args... args) &&
-  {
-    try
-    {
-      R2 ret = invoke(ptr.get(), std::forward<Args>(args)...);
-      clear();
-      return ret;
-    }
-    catch (std::runtime_error e)
-    {
-      clear();
-      throw;
-    }
-  }
-  // invoke in the case where R is void:
-  template <class R2 = R, std::enable_if_t<std::is_same<R2, void>{}, int> = 0>
-  R2 operator()(Args... args) &&
-  {
-    try
-    {
-      invoke(ptr.get(), std::forward<Args>(args)...);
-      clear();
-    }
-    catch (...)
-    {
-      clear();
-      throw;
+  flexInvokable(parser<F>, FArgs &&...args)
+      : ptr{std::make_shared<F>(std::forward<FArgs>(args)...)},
+        invoke{[](void *pf, Args... args) -> R {
+          return (*(F *)pf)(std::forward<Args>(args)...);
+        }} {}
+
+  auto operator()(Args... args) -> decltype(auto) {
+    try {
+      if constexpr (std::is_same_v<R, void>) {
+        invoke(ptr.get(), std::forward<Args>(args)...);
+        reset();
+      } else {
+        auto ret = invoke(ptr.get(), std::forward<Args>(args)...);
+        reset();
+        return ret;
+      }
+    } catch (std::exception const &e) {
+      reset();
+      throw e;
     }
   }
 
-  // empty the fire_once:
-  void clear()
-  {
+  void reset() {
     invoke = nullptr;
     ptr.reset();
   }
@@ -89,23 +65,9 @@ struct flexInvokable<R(Args...)>
   // test if it is non-empty:
   explicit operator bool() const { return (bool)ptr; }
 
-  // change what the flexInvokable contains:
-  template <class F, class... FArgs>
-  void rebind(FArgs &&... fargs)
-  {
-    clear();
-    auto pf = std::make_unique<F>(std::forward<FArgs>(fargs)...);
-    invoke = [](void *pf, Args... args) -> R {
-      return (*(F *)pf)(std::forward<Args>(args)...);
-    };
-    ptr = {pf.release(), [](void *pf) { delete (F *)(pf); }};
-  }
-
-private:
-  // storage.  A unique pointer with deleter
-  // and an invoker function pointer:
-  std::unique_ptr<void, void (*)(void *)> ptr{nullptr, [](void *) {}};
-  R (*invoke)
-  (void *, Args...) = nullptr;
+ private:
+  // storage. shared_ptr to type-erase and clean-up.
+  std::shared_ptr<void> ptr{};
+  R (*invoke)(void *, Args...) = nullptr;
 };
-} // namespace csari
+}  // namespace csari
