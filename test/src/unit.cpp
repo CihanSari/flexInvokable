@@ -57,5 +57,23 @@ TEST_CASE("ArgumentTests") {
   REQUIRE(std::move(*it)(6));
 }
 
+TEST_CASE("ThrowTests") {
+  // void()
+  struct fiveThrow : std::runtime_error {
+    using runtime_error::runtime_error;
+  };
+  auto throw1 = [mu = std::make_unique<std::string>("five")] {
+    throw fiveThrow{*mu};
+  };
+  struct sixThrow : std::runtime_error {
+    using runtime_error::runtime_error;
+  };
+  auto throw2 = [mu = std::make_unique<std::string>("six")] {
+    throw sixThrow{*mu};
+  };
+  REQUIRE_THROWS_AS(throw1(), fiveThrow);
+  REQUIRE_THROWS_AS(throw2(), sixThrow);
+}
+
 int examples();
 TEST_CASE("Examples") { REQUIRE(examples() == 0); }
